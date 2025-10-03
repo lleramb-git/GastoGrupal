@@ -42,7 +42,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new expense
   app.post("/api/expenses", async (req, res) => {
     try {
-      const expenseValidation = insertExpenseSchema.extend({
+      const expenseValidation = z.object({
+        description: z.string().min(1),
+        amount: z.string(),
+        payerId: z.string(),
+        date: z.string(),
         participants: z.array(z.object({
           userId: z.string(),
           amount: z.string(),
@@ -56,7 +60,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: validatedData.description,
           amount: validatedData.amount,
           payerId: validatedData.payerId,
-          date: validatedData.date,
+          date: new Date(validatedData.date),
         },
         validatedData.participants
       );

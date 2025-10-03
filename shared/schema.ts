@@ -38,6 +38,8 @@ export const insertExpenseSchema = createInsertSchema(expenses).pick({
   amount: true,
   payerId: true,
   date: true,
+}).extend({
+  date: z.union([z.date(), z.string().transform((val) => new Date(val))]),
 });
 
 export const insertExpenseParticipantSchema = createInsertSchema(expenseParticipants).pick({
