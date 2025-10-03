@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import Calendar from "@/components/calendar";
 import ExpenseForm from "@/components/expense-form";
 import DailyExpenses from "@/components/daily-expenses";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [, setLocation] = useLocation();
 
   return (
     <div className="min-h-screen bg-background">
@@ -30,6 +32,7 @@ export default function Dashboard() {
                 size="sm" 
                 className="hidden sm:flex items-center space-x-2"
                 data-testid="button-history"
+                onClick={() => setLocation("/historial")}
               >
                 <Clock className="w-4 h-4" />
                 <span>Historial</span>

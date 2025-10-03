@@ -1,26 +1,32 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { getUsers, createExpense, initializeApp } from "@/lib/supabase";
-import { Card, CardContent } from "@/components/ui/card";
+import { getUsers, type Expense } from "@/lib/supabase";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
-import { PlusCircle, Save, Equal, Percent, DollarSign, AlertCircle, Check, ChevronsUpDown, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Save, Equal, Percent, DollarSign, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface ExpenseFormProps {
-  selectedDate: Date;
+interface ExpenseEditModalProps {
+  expense: Expense | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 const formSchema = z.object({
@@ -32,7 +38,7 @@ const formSchema = z.object({
   payerId: z.string().min(1, "Selecciona quién pagó"),
 });
 
-export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
+export default function ExpenseEditModal({ expense, open, onOpenChange }: ExpenseEditModalProps) {
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
   const [splitType, setSplitType] = useState<"equal" | "percentage" | "exact">("equal");
   const [percentages, setPercentages] = useState<Record<string, string>>({});
@@ -40,13 +46,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Initialize app and get users
-  useQuery({
-    queryKey: ["/api/initialize"],
-    queryFn: initializeApp,
-  });
-
-  const { data: users = [], isLoading: usersLoading } = useQuery({
+  const { data: users = [] } = useQuery({
     queryKey: ["/api/users"],
     queryFn: getUsers,
   });
@@ -62,7 +62,38 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
 
   const totalAmount = parseFloat(form.watch("amount") || "0");
 
-  // Calculate validation status
+  // Initialize form with expense data
+  useEffect(() => {
+    if (expense) {
+      form.setValue("description", expense.description);
+      form.setValue("amount", expense.amount);
+      form.setValue("payerId", expense.payerId);
+
+      const participantIds = new Set(expense.participants.map(p => p.userId));
+      setSelectedParticipants(participantIds);
+
+      // Detect split type and set values
+      const amounts = expense.participants.map(p => parseFloat(p.amount));
+      const total = parseFloat(expense.amount);
+      const equalAmount = total / expense.participants.length;
+      
+      // Check if it's equal split
+      const isEqual = amounts.every(amt => Math.abs(amt - equalAmount) < 0.01);
+      
+      if (isEqual) {
+        setSplitType("equal");
+      } else {
+        // Default to exact amounts
+        setSplitType("exact");
+        const newExactAmounts: Record<string, string> = {};
+        expense.participants.forEach(p => {
+          newExactAmounts[p.userId] = p.amount;
+        });
+        setExactAmounts(newExactAmounts);
+      }
+    }
+  }, [expense, form]);
+
   const getValidationStatus = () => {
     if (splitType === "percentage") {
       const total = Array.from(selectedParticipants).reduce((sum, userId) => {
@@ -89,18 +120,17 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
 
   const validationStatus = getValidationStatus();
 
-  const createExpenseMutation = useMutation({
-    mutationFn: createExpense,
+  const updateExpenseMutation = useMutation({
+    mutationFn: async (data: { description: string; amount: string; payerId: string; participants: { userId: string; amount: string }[] }) => {
+      const response = await apiRequest("PUT", `/api/expenses/${expense?.id}`, data);
+      return response.json();
+    },
     onSuccess: () => {
       toast({
-        title: "Gasto guardado",
-        description: "El gasto se ha registrado correctamente",
+        title: "Gasto actualizado",
+        description: "El gasto se ha actualizado correctamente",
       });
-      form.reset();
-      setSelectedParticipants(new Set());
-      setPercentages({});
-      setExactAmounts({});
-      // Invalidate related queries
+      onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/debts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
@@ -108,7 +138,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "No se pudo guardar el gasto",
+        description: error.message || "No se pudo actualizar el gasto",
         variant: "destructive",
       });
     },
@@ -162,11 +192,10 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
       }));
     }
 
-    createExpenseMutation.mutate({
+    updateExpenseMutation.mutate({
       description: values.description,
       amount: values.amount,
       payerId: values.payerId,
-      date: format(selectedDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
       participants,
     });
   };
@@ -175,7 +204,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     const newSet = new Set(selectedParticipants);
     if (newSet.has(userId)) {
       newSet.delete(userId);
-      // Remove from percentages/exact amounts
       const newPercentages = { ...percentages };
       delete newPercentages[userId];
       setPercentages(newPercentages);
@@ -185,7 +213,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
       setExactAmounts(newExactAmounts);
     } else {
       newSet.add(userId);
-      // Initialize with default values
       if (splitType === "percentage") {
         const equalPercent = (100 / (newSet.size)).toFixed(1);
         const newPercentages: Record<string, string> = {};
@@ -205,7 +232,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     setSelectedParticipants(newSet);
   };
 
-  // Update percentages/amounts when changing split type
   useEffect(() => {
     if (selectedParticipants.size === 0) return;
     
@@ -226,32 +252,17 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     }
   }, [splitType]);
 
-  if (usersLoading) {
-    return (
-      <Card className="shadow-md">
-        <CardContent className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-6 bg-muted rounded w-1/3"></div>
-            <div className="h-10 bg-muted rounded"></div>
-            <div className="h-10 bg-muted rounded"></div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (!expense) return null;
 
   return (
-    <Card className="shadow-md">
-      <CardContent className="p-6">
-        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
-          <PlusCircle className="w-5 h-5 text-primary mr-2" />
-          Registrar Nuevo Gasto
-        </h3>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar Gasto</DialogTitle>
+        </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            
-            {/* Amount Input */}
             <FormField
               control={form.control}
               name="amount"
@@ -267,7 +278,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                         step="0.01"
                         placeholder="0.00"
                         className="pl-8"
-                        data-testid="input-amount"
                       />
                     </div>
                   </FormControl>
@@ -275,7 +285,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
               )}
             />
 
-            {/* Description */}
             <FormField
               control={form.control}
               name="description"
@@ -286,14 +295,12 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                     <Input 
                       {...field}
                       placeholder="Ej: Cena en restaurante"
-                      data-testid="input-description"
                     />
                   </FormControl>
                 </FormItem>
               )}
             />
 
-            {/* Payer Selection */}
             <FormField
               control={form.control}
               name="payerId"
@@ -302,7 +309,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                   <FormLabel>¿Quién pagó?</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <SelectTrigger data-testid="select-payer">
+                      <SelectTrigger>
                         <SelectValue placeholder="Seleccionar usuario..." />
                       </SelectTrigger>
                     </FormControl>
@@ -318,7 +325,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
               )}
             />
 
-            {/* Split Type */}
             <div>
               <Label className="text-sm font-medium text-foreground mb-2 block">
                 Tipo de División
@@ -332,7 +338,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
-                  data-testid="button-split-equal"
                 >
                   <Equal className="w-4 h-4 mr-2" />
                   <span className="text-sm font-medium">Equitativo</span>
@@ -345,7 +350,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
-                  data-testid="button-split-percentage"
                 >
                   <Percent className="w-4 h-4 mr-2" />
                   <span className="text-sm font-medium">Porcentaje</span>
@@ -358,7 +362,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
-                  data-testid="button-split-exact"
                 >
                   <DollarSign className="w-4 h-4 mr-2" />
                   <span className="text-sm font-medium">Exacto</span>
@@ -366,7 +369,6 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
               </div>
             </div>
 
-            {/* Participants Selection */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <Label className="text-sm font-medium text-foreground">
@@ -390,171 +392,111 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
                 </Alert>
               )}
 
-              {/* Combobox for selecting participants */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    className={cn(
-                      "w-full justify-between",
-                      selectedParticipants.size === 0 && "text-muted-foreground"
-                    )}
-                  >
-                    {selectedParticipants.size === 0
-                      ? "Seleccionar participantes..."
-                      : `${selectedParticipants.size} participante${selectedParticipants.size > 1 ? "s" : ""} seleccionado${selectedParticipants.size > 1 ? "s" : ""}`
-                    }
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar usuario..." />
-                    <CommandEmpty>No se encontraron usuarios.</CommandEmpty>
-                    <CommandGroup className="max-h-64 overflow-auto">
-                      {users.filter(u => u.active).map((user) => (
-                        <CommandItem
-                          key={user.id}
-                          onSelect={() => toggleParticipant(user.id)}
-                          className="flex items-center space-x-2"
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedParticipants.has(user.id) ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          <div 
-                            className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                            style={{ backgroundColor: user.color }}
-                          >
-                            {user.initials}
-                          </div>
-                          <span>{user.name}</span>
-                          {selectedParticipants.has(user.id) && splitType === "equal" && totalAmount > 0 && (
-                            <span className="ml-auto text-xs text-muted-foreground">
-                              ${(totalAmount / selectedParticipants.size).toFixed(2)}
-                            </span>
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-
-              {/* Selected participants chips */}
-              {selectedParticipants.size > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {Array.from(selectedParticipants).map(userId => {
-                    const user = users.find(u => u.id === userId);
-                    if (!user) return null;
-                    return (
-                      <div key={userId} className="inline-flex items-center space-x-2 bg-primary/10 text-primary px-3 py-1 rounded-full">
+              <div className="space-y-2">
+                {users.filter(u => u.active).map((user) => (
+                  <div key={user.id} className="space-y-2">
+                    <label className="flex items-center p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors">
+                      <Checkbox
+                        checked={selectedParticipants.has(user.id)}
+                        onCheckedChange={() => toggleParticipant(user.id)}
+                      />
+                      <div className="ml-3 flex items-center flex-1">
                         <div 
-                          className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium text-white"
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium text-white"
                           style={{ backgroundColor: user.color }}
                         >
                           {user.initials}
                         </div>
-                        <span className="text-sm font-medium">{user.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => toggleParticipant(userId)}
-                          className="hover:bg-primary/20 rounded-full p-0.5"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                        <span className="ml-3 text-sm font-medium text-foreground">
+                          {user.name}
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Individual participant inputs */}
-              <div className="space-y-2 mt-3">
-                {Array.from(selectedParticipants).map(userId => {
-                  const user = users.find(u => u.id === userId);
-                  if (!user) return null;
-                  
-                  return (
-                    <div key={userId} className="space-y-2">
-                      {/* Percentage Input */}
-                      {splitType === "percentage" && (
-                        <div className="flex items-center space-x-2">
-                          <div className="relative flex-1">
-                            <Input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="100"
-                              value={percentages[user.id] || ""}
-                              onChange={(e) => setPercentages({
-                                ...percentages,
-                                [user.id]: e.target.value
-                              })}
-                              placeholder="0.0"
-                              className="pr-8"
-                            />
-                            <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">%</span>
-                          </div>
-                          {totalAmount > 0 && percentages[user.id] && (
-                            <span className="text-sm text-muted-foreground whitespace-nowrap">
-                              = ${((totalAmount * parseFloat(percentages[user.id])) / 100).toFixed(2)}
-                            </span>
-                          )}
-                        </div>
+                      
+                      {selectedParticipants.has(user.id) && splitType === "equal" && totalAmount > 0 && (
+                        <span className="text-sm text-muted-foreground">
+                          ${(totalAmount / selectedParticipants.size).toFixed(2)}
+                        </span>
                       )}
+                    </label>
 
-                      {/* Exact Amount Input */}
-                      {splitType === "exact" && (
-                        <div className="flex items-center space-x-2">
-                          <div className="relative flex-1">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={exactAmounts[user.id] || ""}
-                              onChange={(e) => setExactAmounts({
-                                ...exactAmounts,
-                                [user.id]: e.target.value
-                              })}
-                              placeholder="0.00"
-                              className="pl-8"
-                            />
-                          </div>
+                    {selectedParticipants.has(user.id) && splitType === "percentage" && (
+                      <div className="ml-11 flex items-center space-x-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
+                            value={percentages[user.id] || ""}
+                            onChange={(e) => setPercentages({
+                              ...percentages,
+                              [user.id]: e.target.value
+                            })}
+                            placeholder="0.0"
+                            className="pr-8"
+                          />
+                          <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">%</span>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {totalAmount > 0 && percentages[user.id] && (
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">
+                            = ${((totalAmount * parseFloat(percentages[user.id])) / 100).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedParticipants.has(user.id) && splitType === "exact" && (
+                      <div className="ml-11">
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={exactAmounts[user.id] || ""}
+                            onChange={(e) => setExactAmounts({
+                              ...exactAmounts,
+                              [user.id]: e.target.value
+                            })}
+                            placeholder="0.00"
+                            className="pl-8"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Submit Button */}
-            <Button 
-              type="submit" 
-              className="w-full shadow-md"
-              disabled={createExpenseMutation.isPending}
-              data-testid="button-save-expense"
-            >
-              {createExpenseMutation.isPending ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
-                  <span>Guardando...</span>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Gasto</span>
-                </div>
-              )}
-            </Button>
+            <DialogFooter>
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit"
+                disabled={updateExpenseMutation.isPending}
+              >
+                {updateExpenseMutation.isPending ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+                    <span>Guardando...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <Save className="w-4 h-4" />
+                    <span>Guardar Cambios</span>
+                  </div>
+                )}
+              </Button>
+            </DialogFooter>
           </form>
         </Form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }

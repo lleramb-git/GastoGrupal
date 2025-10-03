@@ -5,6 +5,7 @@ export interface User {
   name: string;
   initials: string;
   color: string;
+  active: number;
   createdAt: string;
 }
 

@@ -1,11 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getDebts, getStats, getUsers } from "@/lib/supabase";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChartPie, Scale, Users, Calculator, UserPlus } from "lucide-react";
+import { ChartPie, Scale, Users, Calculator, UserPlus, CheckCircle, History } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import UserManagement from "./user-management";
+import PaymentHistoryModal from "./payment-history-modal";
 
 export default function DebtSummary() {
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isPaymentHistoryOpen, setIsPaymentHistoryOpen] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: debts = [], isLoading: debtsLoading } = useQuery({
     queryKey: ["/api/debts"],
     queryFn: getDebts,
@@ -22,6 +31,40 @@ export default function DebtSummary() {
   });
 
   const avgPerPerson = stats ? (parseFloat(stats.totalSpent) / Math.max(users.length, 1)).toFixed(2) : "0.00";
+
+  const markAsPaidMutation = useMutation({
+    mutationFn: async (debt: typeof debts[0]) => {
+      const response = await apiRequest("POST", "/api/payments", {
+        fromUserId: debt.debtor.id,
+        toUserId: debt.creditor.id,
+        amount: debt.amount,
+        description: `Pago de deuda: ${debt.debtor.name} a ${debt.creditor.name}`,
+      });
+      return response.json();
+    },
+    onSuccess: async () => {
+      // Refrescar inmediatamente las deudas
+      await queryClient.invalidateQueries({ queryKey: ["/api/debts"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/debts"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      
+      toast({
+        title: "Pago registrado",
+        description: "La deuda ha sido marcada como pagada",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo registrar el pago",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleMarkAsPaid = (debt: typeof debts[0]) => {
+    markAsPaidMutation.mutate(debt);
+  };
 
   return (
     <div className="space-y-6">
@@ -117,16 +160,45 @@ export default function DebtSummary() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                    <span className="text-xs text-muted-foreground">Monto:</span>
-                    <span className="text-lg font-bold text-destructive">
-                      ${parseFloat(debt.amount).toFixed(2)}
-                    </span>
+                  <div className="space-y-1 mt-2 pt-2 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Pendiente por pagar:</span>
+                      <span className="text-lg font-bold text-destructive">
+                        ${parseFloat(debt.amount).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
+                  <Button
+                    size="sm"
+                    className="w-full mt-3"
+                    onClick={() => handleMarkAsPaid(debt)}
+                    disabled={markAsPaidMutation.isPending}
+                  >
+                    {markAsPaidMutation.isPending ? (
+                      <>
+                        <div className="w-3 h-3 mr-2 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+                        <span>Procesando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-3 h-3 mr-2" />
+                        <span>Marcar como Pagado</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               ))}
             </div>
           )}
+
+          <Button 
+            variant="outline"
+            className="w-full mt-4"
+            onClick={() => setIsPaymentHistoryOpen(true)}
+          >
+            <History className="w-4 h-4 mr-2" />
+            Ver Historial de Pagos
+          </Button>
 
           <Button 
             className="w-full mt-4 bg-accent hover:bg-accent/90" 
@@ -189,6 +261,7 @@ export default function DebtSummary() {
             variant="outline" 
             className="w-full mt-4"
             data-testid="button-manage-users"
+            onClick={() => setIsUserManagementOpen(true)}
           >
             <UserPlus className="w-4 h-4 mr-2" />
             Gestionar Usuarios
@@ -196,6 +269,17 @@ export default function DebtSummary() {
         </CardContent>
       </Card>
 
+      {/* User Management Modal */}
+      <UserManagement
+        open={isUserManagementOpen}
+        onOpenChange={setIsUserManagementOpen}
+      />
+
+      {/* Payment History Modal */}
+      <PaymentHistoryModal
+        open={isPaymentHistoryOpen}
+        onOpenChange={setIsPaymentHistoryOpen}
+      />
     </div>
   );
 }

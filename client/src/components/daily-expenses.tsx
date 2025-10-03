@@ -1,21 +1,63 @@
-import { useQuery } from "@tanstack/react-query";
-import { getExpensesByDate } from "@/lib/supabase";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getExpensesByDate, type Expense } from "@/lib/supabase";
+import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
-import { UserCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { UserCircle, Edit, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import ExpenseEditModal from "./expense-edit-modal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface DailyExpensesProps {
   selectedDate: Date;
 }
 
 export default function DailyExpenses({ selectedDate }: DailyExpensesProps) {
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ["/api/expenses", format(selectedDate, "yyyy-MM-dd")],
     queryFn: () => getExpensesByDate(format(selectedDate, "yyyy-MM-dd")),
   });
 
   const dailyTotal = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+
+  const deleteExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      await apiRequest("DELETE", `/api/expenses/${expenseId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Gasto eliminado",
+        description: "El gasto se ha eliminado correctamente",
+      });
+      setDeletingExpenseId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/debts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar el gasto",
+        variant: "destructive",
+      });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -85,7 +127,7 @@ export default function DailyExpenses({ selectedDate }: DailyExpensesProps) {
                   </div>
                 </div>
 
-                <div className="border-t border-border pt-3">
+                <div className="border-t border-border pt-3 mb-3">
                   <p className="text-sm font-medium text-muted-foreground mb-2">División:</p>
                   <div className="grid grid-cols-2 gap-2">
                     {expense.participants.map((participant) => (
@@ -106,10 +148,59 @@ export default function DailyExpenses({ selectedDate }: DailyExpensesProps) {
                     ))}
                   </div>
                 </div>
+
+                <div className="flex items-center justify-end space-x-2 border-t border-border pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingExpense(expense)}
+                    className="flex items-center space-x-1"
+                  >
+                    <Edit className="w-3 h-3" />
+                    <span>Editar</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeletingExpenseId(expense.id)}
+                    className="flex items-center space-x-1 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Eliminar</span>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         )}
+
+        {/* Edit Modal */}
+        <ExpenseEditModal
+          expense={editingExpense}
+          open={!!editingExpense}
+          onOpenChange={(open) => !open && setEditingExpense(null)}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deletingExpenseId} onOpenChange={(open) => !open && setDeletingExpenseId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar gasto?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. El gasto será eliminado permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deletingExpenseId && deleteExpenseMutation.mutate(deletingExpenseId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

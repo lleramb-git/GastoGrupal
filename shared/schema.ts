@@ -8,6 +8,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   initials: text("initials").notNull(),
   color: text("color").notNull().default("#3B82F6"),
+  active: integer("active").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -25,6 +26,16 @@ export const expenseParticipants = pgTable("expense_participants", {
   expenseId: uuid("expense_id").references(() => expenses.id).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+});
+
+export const payments = pgTable("payments", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: uuid("from_user_id").references(() => users.id).notNull(),
+  toUserId: uuid("to_user_id").references(() => users.id).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  description: text("description"),
+  paymentDate: timestamp("payment_date").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -58,6 +69,22 @@ export type InsertExpenseParticipant = z.infer<typeof insertExpenseParticipantSc
 export interface ExpenseWithDetails extends Expense {
   payer: User;
   participants: (ExpenseParticipant & { user: User })[];
+}
+
+export const insertPaymentSchema = createInsertSchema(payments).pick({
+  fromUserId: true,
+  toUserId: true,
+  amount: true,
+  description: true,
+  paymentDate: true,
+});
+
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+export interface PaymentWithDetails extends Payment {
+  fromUser: User;
+  toUser: User;
 }
 
 export interface DebtSummary {
