@@ -49,13 +49,13 @@ export default function DebtSummary() {
       await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       
       toast({
-        title: "Pago registrado",
-        description: "La deuda ha sido marcada como pagada",
+        title: "🎉 Toma ya!",
+        description: "Ya no eres un moroso",
       });
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
+        title: "💩 Uy, la hemos cagado",
         description: error.message || "No se pudo registrar el pago",
         variant: "destructive",
       });
@@ -74,7 +74,7 @@ export default function DebtSummary() {
         <CardContent className="p-6">
           <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
             <ChartPie className="w-5 h-5 text-primary mr-2" />
-            Resumen General
+            📊 El Contador de Pobres
           </h3>
 
           <div className="space-y-4">
@@ -119,7 +119,7 @@ export default function DebtSummary() {
         <CardContent className="p-6">
           <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
             <Scale className="w-5 h-5 text-accent mr-2" />
-            Balance de Deudas
+            💀 ¿Quién debe pasta?
           </h3>
 
           {debtsLoading ? (
@@ -130,8 +130,11 @@ export default function DebtSummary() {
             </div>
           ) : debts.length === 0 ? (
             <div className="text-center py-8">
+              <p className="text-lg font-bold text-green-600 mb-2">
+                🎉 ¡Enhorabuena!
+              </p>
               <p className="text-muted-foreground" data-testid="text-no-debts">
-                No hay deudas pendientes
+                Todos estáis igual de pelados 🦗
               </p>
             </div>
           ) : (
@@ -182,7 +185,7 @@ export default function DebtSummary() {
                     ) : (
                       <>
                         <CheckCircle className="w-3 h-3 mr-2" />
-                        <span>Marcar como Pagado</span>
+                        <span>Dale, ya te pagaron 💰</span>
                       </>
                     )}
                   </Button>
@@ -197,7 +200,7 @@ export default function DebtSummary() {
             onClick={() => setIsPaymentHistoryOpen(true)}
           >
             <History className="w-4 h-4 mr-2" />
-            Ver Historial de Pagos
+            📜 Ver Historial de Pagos
           </Button>
 
           <Button 
@@ -206,7 +209,7 @@ export default function DebtSummary() {
             data-testid="button-simplify-debts"
           >
             <Calculator className="w-4 h-4 mr-2" />
-            Simplificar Deudas
+            🔥 Ajustar Cuentas
           </Button>
         </CardContent>
       </Card>
@@ -216,7 +219,7 @@ export default function DebtSummary() {
         <CardContent className="p-6">
           <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
             <Users className="w-5 h-5 text-secondary mr-2" />
-            Usuarios Activos
+            👥 La Peña
           </h3>
 
           {usersLoading ? (
@@ -264,7 +267,7 @@ export default function DebtSummary() {
             onClick={() => setIsUserManagementOpen(true)}
           >
             <UserPlus className="w-4 h-4 mr-2" />
-            Gestionar Usuarios
+            ⚙️ Gestionar la Peña
           </Button>
         </CardContent>
       </Card>

@@ -23,7 +23,7 @@ export default function Dashboard() {
               <div className="bg-primary text-primary-foreground w-10 h-10 rounded-lg flex items-center justify-center">
                 <Receipt className="w-6 h-6" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">Gastos Compartidos</h1>
+              <h1 className="text-xl font-bold text-foreground">💸 Grupo de Mierda - Gestor de Pobres</h1>
             </div>
             
             <div className="flex items-center space-x-4">
@@ -35,7 +35,7 @@ export default function Dashboard() {
                 onClick={() => setLocation("/historial")}
               >
                 <Clock className="w-4 h-4" />
-                <span>Historial</span>
+                <span>Ver el Desastre</span>
               </Button>
               <Button 
                 size="sm" 
@@ -43,7 +43,7 @@ export default function Dashboard() {
                 data-testid="button-new-expense"
               >
                 <Plus className="w-4 h-4" />
-                <span>Nuevo Gasto</span>
+                <span>Suelta la Pasta 💸</span>
               </Button>
             </div>
           </div>

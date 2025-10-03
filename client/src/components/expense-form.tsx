@@ -93,8 +93,8 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     mutationFn: createExpense,
     onSuccess: () => {
       toast({
-        title: "Gasto guardado",
-        description: "El gasto se ha registrado correctamente",
+        title: "💸 Ahí va!",
+        description: "Gasto registrado, menudo gasto...",
       });
       form.reset();
       setSelectedParticipants(new Set());
@@ -107,7 +107,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
+        title: "💩 Error de mierda",
         description: error.message || "No se pudo guardar el gasto",
         variant: "destructive",
       });
@@ -117,7 +117,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     if (selectedParticipants.size === 0) {
       toast({
-        title: "Error",
+        title: "⚠️ Ey, espabila",
         description: "Selecciona al menos un participante",
         variant: "destructive",
       });
@@ -137,7 +137,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     } else if (splitType === "percentage") {
       if (!validationStatus.isValid) {
         toast({
-          title: "Error",
+          title: "🤔 Las mates no cuadran",
           description: "Los porcentajes deben sumar 100%",
           variant: "destructive",
         });
@@ -150,7 +150,7 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
     } else if (splitType === "exact") {
       if (!validationStatus.isValid) {
         toast({
-          title: "Error",
+          title: "🤔 Las mates no cuadran",
           description: "La suma de montos debe ser igual al total",
           variant: "destructive",
         });
@@ -243,10 +243,10 @@ export default function ExpenseForm({ selectedDate }: ExpenseFormProps) {
   return (
     <Card className="shadow-md">
       <CardContent className="p-6">
-        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
-          <PlusCircle className="w-5 h-5 text-primary mr-2" />
-          Registrar Nuevo Gasto
-        </h3>
+          <h3 className="text-lg font-bold text-foreground mb-4 flex items-center">
+            <PlusCircle className="w-5 h-5 text-primary mr-2" />
+            💸 ¿Quién ha soltado la pasta esta vez?
+          </h3>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
